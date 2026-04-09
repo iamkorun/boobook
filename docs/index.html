@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>🦉 boobook — pipe your logs through boobook and actually read them.</title>
+    <meta
+      name="description"
+      content="A universal JSON log prettifier. Zero config. Streams NDJSON, colorizes levels, formats timestamps. Works with pino, winston, bunyan, logrus, kubectl, docker."
+    />
+    <meta property="og:title" content="🦉 boobook — actually read your JSON logs" />
+    <meta
+      property="og:description"
+      content="Universal JSON log prettifier. npx boobook and you're done."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://iamkorun.github.io/boobook" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E🦉%3C/text%3E%3C/svg%3E"
+    />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("forge-theme");
+          if (t === "light") {
+            document.documentElement.classList.remove("dark");
+            document.documentElement.classList.add("light");
+          } else {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (_) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+    <link
+      rel="preconnect"
+      href="https://fonts.googleapis.com"
+      crossorigin
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Cabinet Grotesk"', "system-ui", "sans-serif"],
+              mono: ['"JetBrains Mono"', "ui-monospace", "monospace"],
+            },
+            colors: {
+              ink: { 900: "#17140F", 800: "#1C1A17", 700: "#23201B" },
+              cream: { 50: "#FFFBF5", 100: "#FAF6EF", 200: "#F2EADB" },
+              butter: { 300: "#F0CE73", 400: "#E8B84A", 500: "#D9A22E" },
+              stone: { 350: "#A8A097" },
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      :root {
+        color-scheme: dark light;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        font-feature-settings: "ss01", "ss02", "cv11";
+      }
+      .grain {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+        opacity: 0.05;
+        mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
+      .dark .grain { opacity: 0.08; }
+      .fade-in {
+        opacity: 0;
+        transform: translateY(12px);
+        transition: opacity 0.7s ease, transform 0.7s ease;
+      }
+      .fade-in.visible {
+        opacity: 1;
+        transform: none;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .fade-in { opacity: 1; transform: none; transition: none; }
+        html { scroll-behavior: auto; }
+      }
+      /* simple syntax highlighting */
+      .hl-key { color: #a8b6ff; }
+      .dark .hl-key { color: #b5c1ff; }
+      .hl-str { color: #d48f4a; }
+      .dark .hl-str { color: #e8b474; }
+      .hl-num { color: #7fb685; }
+      .dark .hl-num { color: #9bcf9b; }
+      .hl-punct { color: #8a8275; }
+      .hl-info { color: #5a8fa3; font-weight: 600; }
+      .dark .hl-info { color: #7eb8c9; }
+      .hl-warn { color: #c48a1a; font-weight: 600; }
+      .dark .hl-warn { color: #e8b84a; }
+      .hl-err { color: #b63f3f; font-weight: 600; }
+      .dark .hl-err { color: #e27070; }
+      .hl-ts { color: #9a8f7a; }
+      .dark .hl-ts { color: #a8a097; }
+    </style>
+  </head>
+  <body
+    class="min-h-[100dvh] bg-cream-100 text-ink-900 antialiased dark:bg-ink-800 dark:text-cream-100"
+  >
+    <div class="grain" aria-hidden="true"></div>
+
+    <!-- NAV -->
+    <nav
+      class="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 pt-8"
+    >
+      <a href="#" class="flex items-center gap-2 font-semibold">
+        <span aria-hidden="true" class="text-xl">🦉</span>
+        <span class="text-lg">boobook</span>
+      </a>
+      <div class="flex items-center gap-2 sm:gap-4">
+        <a
+          href="#usage"
+          class="hidden text-sm text-stone-600 hover:text-ink-900 dark:text-stone-350 dark:hover:text-cream-100 sm:inline"
+          >usage</a
+        >
+        <a
+          href="#why"
+          class="hidden text-sm text-stone-600 hover:text-ink-900 dark:text-stone-350 dark:hover:text-cream-100 sm:inline"
+          >why</a
+        >
+        <a
+          href="https://github.com/iamkorun/boobook"
+          class="text-sm text-stone-600 hover:text-ink-900 dark:text-stone-350 dark:hover:text-cream-100"
+          >github</a
+        >
+        <a
+          href="https://buymeacoffee.com/iamkorun"
+          class="text-sm text-stone-600 hover:text-ink-900 dark:text-stone-350 dark:hover:text-cream-100"
+          >☕</a
+        >
+        <button
+          id="theme-toggle"
+          type="button"
+          aria-label="toggle theme"
+          aria-pressed="true"
+          class="flex h-11 w-11 items-center justify-center rounded-full border border-ink-900/10 text-ink-900 transition hover:bg-ink-900/5 dark:border-cream-100/15 dark:text-cream-100 dark:hover:bg-cream-100/10"
+        >
+          <span class="hidden dark:inline">☀</span>
+          <span class="dark:hidden">☾</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- HERO (asymmetric editorial) -->
+    <header class="relative z-10 mx-auto max-w-6xl px-6 pb-20 pt-16 sm:pt-24">
+      <div class="grid gap-14 md:grid-cols-12">
+        <div class="md:col-span-7 md:col-start-1">
+          <p
+            class="mb-6 font-mono text-xs uppercase tracking-[0.22em] text-butter-500 dark:text-butter-400"
+          >
+            A small tool for a small, loud problem
+          </p>
+          <h1
+            class="font-bold leading-[0.95] tracking-tight text-ink-900 dark:text-cream-50"
+            style="font-size: clamp(2.75rem, 7vw, 5.5rem)"
+          >
+            Your logs<br />
+            are JSON.<br />
+            <span class="text-butter-500 dark:text-butter-400">You&rsquo;re not.</span>
+          </h1>
+          <p
+            class="mt-8 max-w-xl text-lg leading-relaxed text-stone-600 dark:text-stone-350 sm:text-xl"
+          >
+            <strong class="text-ink-900 dark:text-cream-100">boobook</strong> is
+            a universal NDJSON log prettifier. Pipe any structured log stream
+            at it — pino, winston, bunyan, logrus, kubectl, docker — and get
+            back something a human can actually scan. Non-JSON lines pass
+            through untouched, so it never eats your stack traces.
+          </p>
+
+          <div class="mt-10 max-w-xl">
+            <label
+              for="install"
+              class="mb-3 block font-mono text-[11px] uppercase tracking-[0.22em] text-stone-500 dark:text-stone-350"
+              >install (click to copy)</label
+            >
+            <button
+              id="install"
+              type="button"
+              class="group flex w-full items-center justify-between gap-4 rounded-xl border border-ink-900/15 bg-cream-50 px-5 py-5 text-left font-mono text-base transition active:scale-[0.98] hover:border-butter-400 hover:shadow-[0_6px_30px_-12px_rgba(232,184,74,0.5)] dark:border-cream-100/15 dark:bg-ink-900 dark:hover:border-butter-400 sm:text-lg"
+              aria-label="copy install command"
+            >
+              <span class="flex items-center gap-3">
+                <span class="text-stone-400 dark:text-stone-350">$</span>
+                <span>npx boobook</span>
+              </span>
+              <span
+                class="hidden text-xs uppercase tracking-wider text-stone-500 group-hover:inline dark:text-stone-350"
+                >copy</span
+              >
+            </button>
+            <p class="mt-3 font-mono text-xs text-stone-500 dark:text-stone-350">
+              or <span class="text-ink-900 dark:text-cream-100">npm i -g boobook</span> &middot; requires Node 18+
+            </p>
+          </div>
+
+          <div class="mt-10 flex flex-wrap items-center gap-4">
+            <a
+              href="#proof"
+              class="rounded-lg bg-butter-400 px-5 py-3 text-sm font-semibold text-ink-900 transition hover:bg-butter-300"
+              >see the before/after ↓</a
+            >
+            <a
+              href="https://github.com/iamkorun/boobook"
+              class="rounded-lg border border-ink-900/15 px-5 py-3 text-sm font-semibold text-ink-900 transition hover:bg-ink-900/5 dark:border-cream-100/15 dark:text-cream-100 dark:hover:bg-cream-100/10"
+              >★ on GitHub</a
+            >
+          </div>
+        </div>
+
+        <!-- owl glyph (2D svg, small) -->
+        <aside
+          class="hidden md:col-span-4 md:col-start-9 md:block"
+          aria-hidden="true"
+        >
+          <figure class="sticky top-24 ml-auto max-w-[280px]">
+            <svg
+              viewBox="0 0 200 240"
+              class="w-full text-butter-500 dark:text-butter-400"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <!-- body -->
+              <path
+                d="M100 40 C55 40 35 85 35 130 C35 180 65 210 100 210 C135 210 165 180 165 130 C165 85 145 40 100 40 Z"
+              />
+              <!-- ear tufts -->
+              <path d="M55 55 L45 25 M75 45 L70 20 M145 55 L155 25 M125 45 L130 20" />
+              <!-- face disc -->
+              <path d="M65 100 Q100 120 135 100" />
+              <!-- eyes -->
+              <circle cx="78" cy="95" r="18" />
+              <circle cx="122" cy="95" r="18" />
+              <circle cx="78" cy="95" r="7" fill="currentColor" />
+              <circle cx="122" cy="95" r="7" fill="currentColor" />
+              <!-- beak -->
+              <path d="M100 108 L93 122 L107 122 Z" />
+              <!-- chest feathers -->
+              <path d="M70 140 Q85 155 100 140 Q115 155 130 140" />
+              <path d="M70 160 Q85 175 100 160 Q115 175 130 160" />
+              <path d="M75 180 Q90 192 105 180 Q120 192 135 180" opacity="0.6" />
+              <!-- feet -->
+              <path d="M85 210 L82 225 M92 210 L92 225 M99 210 L102 225" />
+              <path d="M108 210 L105 225 M115 210 L115 225 M122 210 L125 225" />
+            </svg>
+            <figcaption
+              class="mt-4 text-right font-mono text-[10px] uppercase tracking-[0.22em] text-stone-500 dark:text-stone-350"
+            >
+              ninox boobook<br />the australian owl
+            </figcaption>
+          </figure>
+        </aside>
+      </div>
+    </header>
+
+    <!-- PROOF — before/after -->
+    <section
+      id="proof"
+      class="fade-in relative z-10 mx-auto max-w-6xl px-6 py-24"
+    >
+      <div class="mb-10 grid gap-6 md:grid-cols-12 md:items-end">
+        <div class="md:col-span-8">
+          <p
+            class="font-mono text-xs uppercase tracking-[0.22em] text-butter-500 dark:text-butter-400"
+          >
+            the proof
+          </p>
+          <h2
+            class="mt-3 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl"
+          >
+            Two minutes of checkout traffic.
+          </h2>
+        </div>
+        <p
+          class="md:col-span-4 text-stone-600 dark:text-stone-350"
+        >
+          Same three log lines. Same stream. Only the reader changed.
+        </p>
+      </div>
+
+      <div class="grid gap-6 lg:grid-cols-2">
+        <!-- BEFORE -->
+        <figure
+          class="overflow-hidden rounded-xl border border-ink-900/15 bg-cream-50 dark:border-cream-100/10 dark:bg-ink-900"
+        >
+          <figcaption
+            class="flex items-center justify-between border-b border-ink-900/10 px-5 py-3 font-mono text-xs uppercase tracking-wider text-stone-500 dark:border-cream-100/10 dark:text-stone-350"
+          >
+            <span>before — raw stdout</span>
+            <span class="flex gap-1.5">
+              <span class="h-2.5 w-2.5 rounded-full bg-stone-400/50"></span>
+              <span class="h-2.5 w-2.5 rounded-full bg-stone-400/50"></span>
+              <span class="h-2.5 w-2.5 rounded-full bg-stone-400/50"></span>
+            </span>
+          </figcaption>
+          <pre class="overflow-x-auto p-5 font-mono text-[12px] leading-relaxed"><code><span class="hl-punct">{</span><span class="hl-key">"level"</span><span class="hl-punct">:</span><span class="hl-num">30</span><span class="hl-punct">,</span><span class="hl-key">"time"</span><span class="hl-punct">:</span><span class="hl-num">1712635200123</span><span class="hl-punct">,</span><span class="hl-key">"pid"</span><span class="hl-punct">:</span><span class="hl-num">4821</span><span class="hl-punct">,</span><span class="hl-key">"hostname"</span><span class="hl-punct">:</span><span class="hl-str">"api-7f8b9"</span><span class="hl-punct">,</span><span class="hl-key">"service"</span><span class="hl-punct">:</span><span class="hl-str">"checkout"</span><span class="hl-punct">,</span><span class="hl-key">"msg"</span><span class="hl-punct">:</span><span class="hl-str">"order placed"</span><span class="hl-punct">,</span><span class="hl-key">"orderId"</span><span class="hl-punct">:</span><span class="hl-str">"ord_8af2"</span><span class="hl-punct">,</span><span class="hl-key">"userId"</span><span class="hl-punct">:</span><span class="hl-str">"usr_91"</span><span class="hl-punct">,</span><span class="hl-key">"amountCents"</span><span class="hl-punct">:</span><span class="hl-num">4299</span><span class="hl-punct">}</span>
+<span class="hl-punct">{</span><span class="hl-key">"level"</span><span class="hl-punct">:</span><span class="hl-num">40</span><span class="hl-punct">,</span><span class="hl-key">"time"</span><span class="hl-punct">:</span><span class="hl-num">1712635201455</span><span class="hl-punct">,</span><span class="hl-key">"pid"</span><span class="hl-punct">:</span><span class="hl-num">4821</span><span class="hl-punct">,</span><span class="hl-key">"hostname"</span><span class="hl-punct">:</span><span class="hl-str">"api-7f8b9"</span><span class="hl-punct">,</span><span class="hl-key">"service"</span><span class="hl-punct">:</span><span class="hl-str">"checkout"</span><span class="hl-punct">,</span><span class="hl-key">"msg"</span><span class="hl-punct">:</span><span class="hl-str">"rate limit warning"</span><span class="hl-punct">,</span><span class="hl-key">"userId"</span><span class="hl-punct">:</span><span class="hl-str">"usr_91"</span><span class="hl-punct">,</span><span class="hl-key">"remaining"</span><span class="hl-punct">:</span><span class="hl-num">2</span><span class="hl-punct">}</span>
+<span class="hl-punct">{</span><span class="hl-key">"level"</span><span class="hl-punct">:</span><span class="hl-num">50</span><span class="hl-punct">,</span><span class="hl-key">"time"</span><span class="hl-punct">:</span><span class="hl-num">1712635202781</span><span class="hl-punct">,</span><span class="hl-key">"pid"</span><span class="hl-punct">:</span><span class="hl-num">4821</span><span class="hl-punct">,</span><span class="hl-key">"hostname"</span><span class="hl-punct">:</span><span class="hl-str">"api-7f8b9"</span><span class="hl-punct">,</span><span class="hl-key">"service"</span><span class="hl-punct">:</span><span class="hl-str">"checkout"</span><span class="hl-punct">,</span><span class="hl-key">"msg"</span><span class="hl-punct">:</span><span class="hl-str">"payment declined"</span><span class="hl-punct">,</span><span class="hl-key">"orderId"</span><span class="hl-punct">:</span><span class="hl-str">"ord_8af2"</span><span class="hl-punct">,</span><span class="hl-key">"code"</span><span class="hl-punct">:</span><span class="hl-str">"card_declined"</span><span class="hl-punct">}</span></code></pre>
+        </figure>
+
+        <!-- AFTER -->
+        <figure
+          class="overflow-hidden rounded-xl border border-butter-400/40 bg-cream-50 shadow-[0_10px_40px_-20px_rgba(232,184,74,0.4)] dark:border-butter-400/40 dark:bg-ink-900"
+        >
+          <figcaption
+            class="flex items-center justify-between border-b border-butter-400/30 px-5 py-3 font-mono text-xs uppercase tracking-wider text-butter-500 dark:text-butter-400"
+          >
+            <span>after — <code>| boobook --exclude hostname,pid</code></span>
+            <span class="flex gap-1.5">
+              <span class="h-2.5 w-2.5 rounded-full bg-butter-400/70"></span>
+              <span class="h-2.5 w-2.5 rounded-full bg-butter-400/70"></span>
+              <span class="h-2.5 w-2.5 rounded-full bg-butter-400/70"></span>
+            </span>
+          </figcaption>
+          <pre class="overflow-x-auto p-5 font-mono text-[13px] leading-relaxed"><code><span class="hl-ts">14:00:00.123</span>  <span class="hl-info">INFO </span>  order placed         <span class="hl-key">service</span>=<span class="hl-str">checkout</span> <span class="hl-key">orderId</span>=<span class="hl-str">ord_8af2</span> <span class="hl-key">userId</span>=<span class="hl-str">usr_91</span> <span class="hl-key">amountCents</span>=<span class="hl-num">4299</span>
+<span class="hl-ts">14:00:01.455</span>  <span class="hl-warn">WARN </span>  rate limit warning   <span class="hl-key">service</span>=<span class="hl-str">checkout</span> <span class="hl-key">userId</span>=<span class="hl-str">usr_91</span> <span class="hl-key">remaining</span>=<span class="hl-num">2</span>
+<span class="hl-ts">14:00:02.781</span>  <span class="hl-err">ERROR</span>  payment declined     <span class="hl-key">service</span>=<span class="hl-str">checkout</span> <span class="hl-key">orderId</span>=<span class="hl-str">ord_8af2</span> <span class="hl-key">code</span>=<span class="hl-str">card_declined</span></code></pre>
+        </figure>
+      </div>
+    </section>
+
+    <!-- EDITORIAL PROSE / WHY -->
+    <section id="why" class="fade-in relative z-10 mx-auto max-w-3xl px-6 py-24">
+      <p
+        class="font-mono text-xs uppercase tracking-[0.22em] text-butter-500 dark:text-butter-400"
+      >
+        the thinking
+      </p>
+      <h2
+        class="mt-3 text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl"
+      >
+        Every log tool wants to be a platform.<br />
+        <span class="text-stone-500 dark:text-stone-350"
+          >boobook just wants to be a pipe.</span
+        >
+      </h2>
+
+      <div
+        class="mt-10 space-y-6 text-lg leading-relaxed text-stone-700 dark:text-stone-350"
+      >
+        <p>
+          There&rsquo;s a whole industry of log aggregators that want your
+          credit card. <code class="font-mono text-butter-500 dark:text-butter-400">pino-pretty</code> only
+          works with pino. <code class="font-mono text-butter-500 dark:text-butter-400">bunyan</code> only
+          works with bunyan. <code class="font-mono text-butter-500 dark:text-butter-400">jq</code> asks you
+          to write a query just to read a line.
+        </p>
+        <p>
+          Meanwhile you&rsquo;re SSH&rsquo;d into a staging box at 2am with
+          nothing installed and a stream of 180-column JSON flying past. You
+          don&rsquo;t need a platform. You need a pipe that takes structured
+          noise on one end and spits out something you can read on the other.
+        </p>
+        <p class="border-l-2 border-butter-400 pl-6 text-2xl font-medium italic text-ink-900 dark:text-cream-100">
+          &ldquo;Pipe your logs through boobook and actually read them.&rdquo;
+        </p>
+        <p>
+          That&rsquo;s the whole thing. It reads NDJSON from stdin. It prints
+          back a timestamp, a colorized level, the message, and a flat trail
+          of <code class="font-mono text-butter-500 dark:text-butter-400">key=value</code>. Non-JSON lines
+          pass through untouched so stack traces, startup banners, and
+          Go&rsquo;s helpful panics all survive intact. Four flags cover the
+          real cases. There is no config file. There will never be a config
+          file.
+        </p>
+      </div>
+    </section>
+
+    <!-- USAGE -->
+    <section id="usage" class="fade-in relative z-10 mx-auto max-w-6xl px-6 py-24">
+      <div class="grid gap-10 md:grid-cols-12">
+        <div class="md:col-span-4">
+          <p
+            class="font-mono text-xs uppercase tracking-[0.22em] text-butter-500 dark:text-butter-400"
+          >
+            in the wild
+          </p>
+          <h2
+            class="mt-3 text-4xl font-semibold leading-tight tracking-tight"
+          >
+            Whatever pipe<br />you already have.
+          </h2>
+          <p class="mt-6 text-stone-600 dark:text-stone-350">
+            boobook reads stdin. If you can pipe it, boobook can read it.
+          </p>
+        </div>
+
+        <div class="space-y-4 md:col-span-8">
+          <div
+            class="rounded-xl border border-ink-900/15 bg-cream-50 p-5 dark:border-cream-100/10 dark:bg-ink-900"
+          >
+            <div
+              class="mb-2 font-mono text-[11px] uppercase tracking-wider text-stone-500 dark:text-stone-350"
+            >
+              kubernetes
+            </div>
+            <pre class="overflow-x-auto font-mono text-sm"><code><span class="hl-punct">$</span> kubectl logs -f deploy/api <span class="hl-punct">|</span> boobook --exclude hostname,pid --level info</code></pre>
+          </div>
+          <div
+            class="rounded-xl border border-ink-900/15 bg-cream-50 p-5 dark:border-cream-100/10 dark:bg-ink-900"
+          >
+            <div
+              class="mb-2 font-mono text-[11px] uppercase tracking-wider text-stone-500 dark:text-stone-350"
+            >
+              docker
+            </div>
+            <pre class="overflow-x-auto font-mono text-sm"><code><span class="hl-punct">$</span> docker compose logs -f --no-log-prefix web <span class="hl-punct">|</span> boobook</code></pre>
+          </div>
+          <div
+            class="rounded-xl border border-ink-900/15 bg-cream-50 p-5 dark:border-cream-100/10 dark:bg-ink-900"
+          >
+            <div
+              class="mb-2 font-mono text-[11px] uppercase tracking-wider text-stone-500 dark:text-stone-350"
+            >
+              pino / winston
+            </div>
+            <pre class="overflow-x-auto font-mono text-sm"><code><span class="hl-punct">$</span> node server.js <span class="hl-punct">|</span> boobook --include msg,level,userId,route</code></pre>
+          </div>
+          <div
+            class="rounded-xl border border-ink-900/15 bg-cream-50 p-5 dark:border-cream-100/10 dark:bg-ink-900"
+          >
+            <div
+              class="mb-2 font-mono text-[11px] uppercase tracking-wider text-stone-500 dark:text-stone-350"
+            >
+              go (zap / logrus)
+            </div>
+            <pre class="overflow-x-auto font-mono text-sm"><code><span class="hl-punct">$</span> ./server 2&gt;&amp;1 <span class="hl-punct">|</span> boobook --exclude caller,stacktrace</code></pre>
+          </div>
+          <div
+            class="rounded-xl border border-ink-900/15 bg-cream-50 p-5 dark:border-cream-100/10 dark:bg-ink-900"
+          >
+            <div
+              class="mb-2 font-mono text-[11px] uppercase tracking-wider text-stone-500 dark:text-stone-350"
+            >
+              ci logs to a file
+            </div>
+            <pre class="overflow-x-auto font-mono text-sm"><code><span class="hl-punct">$</span> pnpm test <span class="hl-punct">|</span> boobook --compact --no-color &gt; run.log</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FLAGS -->
+    <section class="fade-in relative z-10 mx-auto max-w-6xl px-6 py-24">
+      <p
+        class="font-mono text-xs uppercase tracking-[0.22em] text-butter-500 dark:text-butter-400"
+      >
+        the whole api
+      </p>
+      <h2
+        class="mt-3 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl"
+      >
+        Five flags. That&rsquo;s it.
+      </h2>
+      <div class="mt-12 divide-y divide-ink-900/10 dark:divide-cream-100/10">
+        <div class="grid gap-2 py-6 md:grid-cols-12 md:items-baseline">
+          <code class="font-mono text-lg text-butter-500 dark:text-butter-400 md:col-span-3"
+            >--exclude</code
+          >
+          <p class="text-stone-700 dark:text-stone-350 md:col-span-9">
+            Comma-separated field names to drop. Kills
+            <code class="font-mono">hostname</code>, <code class="font-mono">pid</code>, and any other boilerplate your
+            logger insists on.
+          </p>
+        </div>
+        <div class="grid gap-2 py-6 md:grid-cols-12 md:items-baseline">
+          <code class="font-mono text-lg text-butter-500 dark:text-butter-400 md:col-span-3"
+            >--include</code
+          >
+          <p class="text-stone-700 dark:text-stone-350 md:col-span-9">
+            The opposite. Only keep these fields (plus level, ts, msg — always
+            kept). Use when you know exactly what you&rsquo;re hunting for.
+          </p>
+        </div>
+        <div class="grid gap-2 py-6 md:grid-cols-12 md:items-baseline">
+          <code class="font-mono text-lg text-butter-500 dark:text-butter-400 md:col-span-3"
+            >--level</code
+          >
+          <p class="text-stone-700 dark:text-stone-350 md:col-span-9">
+            Suppress anything below a level.
+            <code class="font-mono">trace debug info warn error fatal</code>.
+            Accepts pino numeric levels too.
+          </p>
+        </div>
+        <div class="grid gap-2 py-6 md:grid-cols-12 md:items-baseline">
+          <code class="font-mono text-lg text-butter-500 dark:text-butter-400 md:col-span-3"
+            >--compact</code
+          >
+          <p class="text-stone-700 dark:text-stone-350 md:col-span-9">
+            Single-line dense mode. Good for tail-then-grep workflows.
+          </p>
+        </div>
+        <div class="grid gap-2 py-6 md:grid-cols-12 md:items-baseline">
+          <code class="font-mono text-lg text-butter-500 dark:text-butter-400 md:col-span-3"
+            >--no-color</code
+          >
+          <p class="text-stone-700 dark:text-stone-350 md:col-span-9">
+            Disable ANSI. boobook already auto-detects non-TTY and does the
+            right thing — this is for when you want to force it.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="fade-in relative z-10 mx-auto max-w-3xl px-6 pb-32 pt-12 text-center">
+      <h2 class="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+        Two seconds from now<br />your logs are readable.
+      </h2>
+      <div class="mt-10 inline-flex flex-col items-center">
+        <button
+          id="install-2"
+          type="button"
+          class="group flex items-center gap-4 rounded-xl border border-butter-400 bg-butter-400/10 px-8 py-5 font-mono text-xl text-ink-900 transition active:scale-[0.98] hover:bg-butter-400/20 dark:text-cream-100"
+          aria-label="copy install command"
+        >
+          <span class="text-butter-500 dark:text-butter-400">$</span>
+          <span>npx boobook</span>
+        </button>
+        <p class="mt-4 font-mono text-xs text-stone-500 dark:text-stone-350">
+          MIT &middot; Node 18+ &middot; ~40KB gzipped
+        </p>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer
+      class="relative z-10 border-t border-ink-900/10 dark:border-cream-100/10"
+    >
+      <div
+        class="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-10 text-sm text-stone-600 dark:text-stone-350 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <p class="flex items-center gap-2">
+          <span aria-hidden="true">🦉</span>
+          <span>boobook — MIT &copy; iamkorun</span>
+        </p>
+        <div class="flex items-center gap-5">
+          <a
+            href="https://github.com/iamkorun/boobook"
+            class="hover:text-ink-900 dark:hover:text-cream-100"
+            >GitHub</a
+          >
+          <a
+            href="https://www.npmjs.com/package/boobook"
+            class="hover:text-ink-900 dark:hover:text-cream-100"
+            >npm</a
+          >
+          <a
+            href="https://buymeacoffee.com/iamkorun"
+            class="hover:text-ink-900 dark:hover:text-cream-100"
+            >☕ Buy me a coffee</a
+          >
+        </div>
+      </div>
+    </footer>
+
+    <!-- TOAST -->
+    <div
+      id="toast"
+      class="pointer-events-none fixed bottom-8 left-1/2 z-50 -translate-x-1/2 translate-y-4 rounded-lg bg-ink-900 px-5 py-3 font-mono text-sm text-butter-400 opacity-0 shadow-xl transition-all dark:bg-cream-100 dark:text-ink-900"
+      role="status"
+      aria-live="polite"
+    >
+      Copied — now pipe something at it.
+    </div>
+
+    <script>
+      // THEME TOGGLE
+      (function () {
+        var btn = document.getElementById("theme-toggle");
+        if (!btn) return;
+        function sync() {
+          var isDark = document.documentElement.classList.contains("dark");
+          btn.setAttribute("aria-pressed", isDark ? "true" : "false");
+        }
+        sync();
+        btn.addEventListener("click", function () {
+          var root = document.documentElement;
+          var isDark = root.classList.contains("dark");
+          if (isDark) {
+            root.classList.remove("dark");
+            root.classList.add("light");
+            try { localStorage.setItem("forge-theme", "light"); } catch (_) {}
+          } else {
+            root.classList.remove("light");
+            root.classList.add("dark");
+            try { localStorage.setItem("forge-theme", "dark"); } catch (_) {}
+          }
+          sync();
+        });
+      })();
+
+      // COPY TO CLIPBOARD
+      (function () {
+        var toast = document.getElementById("toast");
+        var cmd = "npx boobook";
+        function showToast() {
+          toast.style.opacity = "1";
+          toast.style.transform = "translate(-50%, 0)";
+          setTimeout(function () {
+            toast.style.opacity = "0";
+            toast.style.transform = "translate(-50%, 1rem)";
+          }, 1600);
+        }
+        function bind(id) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          el.addEventListener("click", function () {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(cmd).then(showToast, showToast);
+            } else {
+              showToast();
+            }
+          });
+        }
+        bind("install");
+        bind("install-2");
+      })();
+
+      // FADE IN ON SCROLL
+      (function () {
+        if (!("IntersectionObserver" in window)) {
+          document
+            .querySelectorAll(".fade-in")
+            .forEach(function (el) { el.classList.add("visible"); });
+          return;
+        }
+        var io = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (e) {
+              if (e.isIntersecting) {
+                e.target.classList.add("visible");
+                io.unobserve(e.target);
+              }
+            });
+          },
+          { threshold: 0.12 }
+        );
+        document
+          .querySelectorAll(".fade-in")
+          .forEach(function (el) { io.observe(el); });
+      })();
+    </script>
+  </body>
+</html>
